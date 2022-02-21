@@ -1,0 +1,5 @@
+numpy==1.21.5
+Pillow
+rich==10.16.1
+scikit-learn==1.0.1
+scipy==1.7.3

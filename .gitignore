@@ -1,0 +1,6 @@
+data/
+*.pth
+*.meta
+*.zip
+*.jpg
+*.pickle
