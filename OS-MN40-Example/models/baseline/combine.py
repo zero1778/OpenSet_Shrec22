@@ -10,7 +10,7 @@ from .pointmlp import PointMLP
 class UniModel(nn.Module):
     def __init__(self, n_class):
         super().__init__()
-        self.model_img = MVCNN(n_class, n_view=5)
+        self.model_img = MVCNN(n_class, n_view=24, pretrained=True)
         self.model_mesh = MeshNet(n_class)
         self.model_pt = PointNetCls(n_class)
         # self.model_pt = PointMLP(n_class)

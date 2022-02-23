@@ -10,9 +10,9 @@ from pathlib import Path
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-from models.baseline import UniModel
+from models.uda import UniModel_cls, UniModel_base
 from loaders import OSMN40_train
-from utils import split_trainval, AverageMeter, res2tab, acc_score, map_score
+from utils import split_trainval, AverageMeter, res2tab, acc_score, map_score, op_copy
 os.environ["CUDA_VISIBLE_DEVICES"] = '0,1'
 
 ######### must config this #########
@@ -23,13 +23,23 @@ data_root = '/home/pbdang/Contest/SHREC22/OpenSet/data/OS-MN40'
 n_class = 8
 n_worker = 4
 max_epoch = 150
-batch_size = 8
+batch_size = 4
+learning_rate = 0.01
 this_task = f"OS-MN40_{time.strftime('%Y-%m-%d-%H-%M-%S')}"
 
 # log and checkpoint
 out_dir = Path('cache')
-save_dir = out_dir/'ckpts'/this_task
+save_dir = out_dir/'ckpts_source'/this_task
 save_dir.mkdir(parents=True, exist_ok=True)
+
+def lr_scheduler(optimizer, iter_num, max_iter, gamma=10, power=0.75):
+    decay = (1 + gamma * iter_num / max_iter) ** (-power)
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = param_group['lr0'] * decay
+        param_group['weight_decay'] = 1e-3
+        param_group['momentum'] = 0.9
+        param_group['nesterov'] = True
+    return optimizer
 
 def setup_seed():
     seed = time.time() % 1000_000
@@ -39,14 +49,17 @@ def setup_seed():
     print(f"random seed: {seed}")
 
 
-def train(data_loader, net, criterion, optimizer, epoch):
+def train(data_loader, netF, netC, criterion, optimizer, epoch, iter_num ,max_iter):
     print(f"Epoch {epoch}, Training...")
-    net.train()
+
+    netF.train()
+    netC.train()
     loss_meter = AverageMeter()
     all_lbls, all_preds = [], []
 
     st = time.time()
     for i, (img, mesh, pt, vox, lbl) in enumerate(data_loader):
+        iter_num += 1
         img = img.cuda()
         mesh = [d.cuda() for d in mesh]
         pt = pt.cuda()
@@ -54,13 +67,15 @@ def train(data_loader, net, criterion, optimizer, epoch):
         lbl = lbl.cuda()
         data = (img, mesh, pt, vox)
 
-        optimizer.zero_grad()
-        out = net(data)
+        out = netC(netF(data))
         out_img, out_mesh, out_pt, out_vox = out
         # import pdb; pdb.set_trace()
         out_obj = (out_img + out_mesh + out_pt + out_vox)/4
         loss = criterion(out_obj, lbl)
         # loss = criterion(out_pt, lbl) + criterion(out_vox, lbl)
+        lr_scheduler(optimizer, iter_num=iter_num, max_iter=max_iter)
+
+        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
@@ -81,11 +96,14 @@ def train(data_loader, net, criterion, optimizer, epoch):
     print(tab_head)
     print(tab_data)
     print("This Epoch Done!\n")
+    return iter_num
 
 
-def validation(data_loader, net, epoch):
+def validation(data_loader, netF, netC, epoch):
     print(f"Epoch {epoch}, Validation...")
-    net.eval()
+
+    netF.eval()
+    netC.eval()
     all_lbls, all_preds = [], []
     fts_img, fts_mesh, fts_pt, fts_vox = [], [], [], []
 
@@ -98,7 +116,7 @@ def validation(data_loader, net, epoch):
         lbl = lbl.cuda()
         data = (img, mesh, pt, vox)
 
-        out, ft = net(data, global_ft=True)
+        out, ft = netC(netF(data), global_ft=True)
         out_img, out_mesh, out_pt, out_vox = out
         ft_img, ft_mesh, ft_pt, ft_vox = ft
         out_obj = (out_img + out_mesh + out_pt + out_vox)/4
@@ -133,15 +151,15 @@ def validation(data_loader, net, epoch):
     return map_s, res
 
 
-def save_checkpoint(val_state, res, net: nn.Module):
+def save_checkpoint(val_state, res, name_model, net: nn.Module):
     state_dict = net.state_dict()
     ckpt = dict(
         val_state=val_state,
         res=res,
         net=state_dict,
     )
-    torch.save(ckpt, str(save_dir / 'ckpt.pth'))
-    with open(str(save_dir / 'ckpt.meta'), 'w') as fp:
+    torch.save(ckpt, str(save_dir / 'ckpt_' + name_model + '.pth'))
+    with open(str(save_dir / 'ckpt_' + name_model + '.meta'), 'w') as fp:
         json.dump(res, fp)
 
 
@@ -155,36 +173,58 @@ def main():
     val_data = OSMN40_train('val', val_list)
     print(f'train samples: {len(train_data)}')
     print(f'val samples: {len(val_data)}')
+
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True,
                                                num_workers=n_worker, drop_last=True)
     val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=True,
                                              num_workers=n_worker)
     print("Create new model")
-    net = UniModel(n_class)
-    net = net.cuda()
-    net = nn.DataParallel(net)
+    netF = UniModel_base(n_class)
+    netF = netF.cuda()
+    netF = nn.DataParallel(netF)
 
-    optimizer = optim.SGD(net.parameters(), 0.01, momentum=0.9, weight_decay=5e-4)
-    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=150, 
-                                                        eta_min=1e-4)
+    netC = UniModel_cls(n_class)
+    netC = netC.cuda()
+    netC = nn.DataParallel(netC)
+
+    param_group = []
+    # learning_rate = 0.01
+    for k, v in netF.named_parameters():
+        param_group += [{'params': v, 'lr': learning_rate*0.1}]
+    for k, v in netC.named_parameters():
+        param_group += [{'params': v, 'lr': learning_rate}]   
+    optimizer = optim.SGD(param_group)
+    optimizer = op_copy(optimizer)
+
+    # optimizer = optim.SGD(par, 0.01, momentum=0.9, weight_decay=5e-4)
+    # lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=150, 
+                                                        # eta_min=1e-4)
 
     criterion = nn.CrossEntropyLoss()
     criterion = criterion.cuda()
 
     best_res, best_state = None, 0
+
+    max_iter = max_epoch * len(train_loader)
+    # interval_iter = max_iter // 10
+    iter_num = 0
+
     for epoch in range(max_epoch):
         # train
-        train(train_loader, net, criterion, optimizer, epoch)
-        lr_scheduler.step()
+        print(iter_num)
+        iter_num = train(train_loader, netF, netC, criterion, optimizer, epoch, iter_num, max_iter)
+        
+        # lr_scheduler.step()
         # validation
         if epoch != 0 and epoch % 5 == 0:
             with torch.no_grad():
-                val_state, res = validation(val_loader, net, epoch)
+                val_state, res = validation(val_loader, netF, netC, epoch)
             # save checkpoint
             if val_state > best_state:
                 print("saving model...")
                 best_res, best_state = res, val_state
-                save_checkpoint(val_state, res, net.module)
+                save_checkpoint(val_state, res, 'F', netF.module)
+                save_checkpoint(val_state, res, 'C', netC.module)
 
     print("\nTrain Finished!")
     tab_head, tab_data = res2tab(best_res)

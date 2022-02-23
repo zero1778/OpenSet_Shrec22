@@ -13,22 +13,24 @@ import scipy.spatial
 import torch.nn as nn
 from pathlib import Path
 from torch.utils.data import DataLoader
+from models.uda import UniModel_cls, UniModel_base
 
-from models import UniModel
 from loaders import OSMN40_retrive
 os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 
 ######### must config this #########
 data_root = Path('../data/OS-MN40')
-ckpt_path = './cache/ckpts/OS-MN40_2022-02-17-18-41-59/ckpt.pth'
-save_path = './pickle/baseline_resnet50_ptretrained/'
+ckpt_path = "./cache/ckpts_source/OS-MN40_2022-02-22-17-29-40/"
+ckptF_path = ckpt_path + '/ckpt_F.pth'
+ckptC_path = ckpt_path + '/ckpt_C.pth'
+save_path = './pickle/source_uda/'
 ####################################
 
 # configure
-dist_mat_path = Path(ckpt_path).parent / "cdist_cosine.txt"
+dist_mat_path = Path(ckpt_path)/ "cdist_cosine.txt"
 dist_metric= 'cosine'
 # dist_metric = 'euclidean'
-batch_size = 48
+batch_size = 4
 n_worker = 4
 n_class = 8
 
@@ -38,8 +40,9 @@ if (os.path.isdir(save_path) == False):
     os.mkdir(save_path)  
 
 
-def extract(query_loader, target_loader, net):
-    net.eval()
+def extract(query_loader, target_loader, netF, netC):
+    netF.eval()
+    netC.eval()
     print("Extracting....")
 
     q_fts_img, q_fts_mesh, q_fts_pt, q_fts_vox = [], [], [], []
@@ -54,7 +57,7 @@ def extract(query_loader, target_loader, net):
             pt = pt.cuda()
             vox = vox.cuda()
             data = (img, mesh, pt, vox)
-            _, ft = net(data, global_ft=True)
+            _, ft = netC(netF(data), global_ft=True)
             ft_img, ft_mesh, ft_pt, ft_vox = ft
             q_fts_img.append(ft_img.detach().cpu().numpy())
             q_fts_mesh.append(ft_mesh.detach().cpu().numpy())
@@ -78,7 +81,7 @@ def extract(query_loader, target_loader, net):
             pt = pt.cuda()
             vox = vox.cuda()
             data = (img, mesh, pt, vox)
-            _, ft = net(data, global_ft=True)
+            _, ft = netC(netF(data), global_ft=True)
             ft_img, ft_mesh, ft_pt, ft_vox = ft
             t_fts_img.append(ft_img.detach().cpu().numpy())
             t_fts_mesh.append(ft_mesh.detach().cpu().numpy())
@@ -123,15 +126,23 @@ def main():
     target_loader = DataLoader(target_data, batch_size=batch_size, shuffle=False,
                                              num_workers=n_worker)
     print(f"Loading model from {ckpt_path}")
-    net = UniModel(n_class)
-    ckpt = torch.load(ckpt_path, map_location=torch.device('cpu'))
-    net.load_state_dict(ckpt['net'])
-    net = net.cuda()
-    net = nn.DataParallel(net)
+
+    netF = UniModel_base(n_class)
+    netC = UniModel_cls(n_class)
+
+    ckpt = torch.load(ckptF_path, map_location=torch.device('cpu'))
+    netF.load_state_dict(ckpt['net'])
+    netF = netF.cuda()
+    netF = nn.DataParallel(netF)
+
+    ckpt = torch.load(ckptC_path, map_location=torch.device('cpu'))
+    netC.load_state_dict(ckpt['net'])
+    netC = netC.cuda()
+    netC = nn.DataParallel(netC)
 
     # extracting
     with torch.no_grad():
-        extract(query_loader, target_loader, net)
+        extract(query_loader, target_loader, netF, netC)
 
     print(f"cdis matrix can be find in path: {dist_mat_path.absolute()}")
 

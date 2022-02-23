@@ -27,9 +27,8 @@ class VoxNet(nn.Module):
             ('pool2', torch.nn.MaxPool3d(2)),
             ('drop2', torch.nn.Dropout(p=0.3))
         ]))
-
         self.mlp = torch.nn.Sequential(OrderedDict([
-            ('fc1', torch.nn.Linear(32 * 14 * 14 * 14, 128)),
+            ('fc1', torch.nn.Linear(32 * 6 * 6 * 6, 128)),
             ('relu1', torch.nn.ReLU()),
             ('drop3', torch.nn.Dropout(p=0.4)),
             ('fc2', torch.nn.Linear(128, self.n_classes))
@@ -38,13 +37,13 @@ class VoxNet(nn.Module):
     def forward(self, x, global_ft=False):
         # import pdb; pdb.set_trace()
         x = self.feat(x)
+        
         g_ft = x.view(x.size(0), -1)
         x = self.mlp(g_ft)
         if global_ft:
             return x, g_ft
         else:
             return x
-
 
 if __name__ == "__main__":
     voxnet = VoxNet(32, 10)

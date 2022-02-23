@@ -18,13 +18,13 @@ class OSMN40_train(Dataset):
         p = Path(self.object_list[index]['path'])
         lbl = self.object_list[index]['label']
         # # image
-        img = load_img(p/'image', self.phase=='train', n_view=5)
+        img = load_img(p/'image', self.phase=='train', n_view=24)
         # # mesh
         mesh = load_mesh(p/'mesh', self.phase=='train')
         # point cloud
-        pt = load_pt(p/'pointcloud', self.phase=='train', resolution=2048)
+        pt = load_pt(p/'pointcloud', self.phase=='train')
         # voxel
-        vox = load_vox(p/'voxel', self.phase=='train', resolution=64)
+        vox = load_vox(p/'voxel', self.phase=='train')
 
         return img, mesh, pt, vox, lbl
 
@@ -42,13 +42,13 @@ class OSMN40_retrive(Dataset):
         
         p = Path(self.object_list[index])
         # # image
-        img = load_img(p/'image', n_view=5)
+        img = load_img(p/'image', n_view=24)
         # # mesh
         mesh = load_mesh(p/'mesh')
         # point cloud
-        pt = load_pt(p/'pointcloud', resolution=2048)
+        pt = load_pt(p/'pointcloud')
         # voxel
-        vox = load_vox(p/'voxel', resolution=64)
+        vox = load_vox(p/'voxel')
 
         return img, mesh, pt, vox
 
