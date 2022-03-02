@@ -4,19 +4,22 @@ import torch.nn as nn
 import random
 import torch.nn.functional as F
 import torch.nn.utils.weight_norm as weightNorm
+from efficientnet_pytorch import EfficientNet
 from utils import init_weights
 
 
 class FeatureNet(nn.Module):
     def __init__(self, pretrained=False):
         super(FeatureNet, self).__init__()
-        self.base_model = torchvision.models.resnet50(pretrained=pretrained)
-        self.feature_len = 2048
-        self.features = nn.Sequential(*list(self.base_model.children())[:-1])
+        self.base_model = EfficientNet.from_pretrained('efficientnet-b1')
+        self.feature_len = 1280 * 7 * 7
+        # self.features = nn.Sequential(*list(self.base_model.children())[:-1])
 
     def forward(self, x):
         # feature maps
-        x = self.features(x)
+        x = self.base_model.extract_features(x)
+        # print(x.shape)
+        # import pdb; pdb.set_trace
         # flatten
         x = x.view(x.size(0), -1)
         return x

@@ -2,7 +2,141 @@ from pathlib import Path
 from random import shuffle
 import torch 
 import torch.nn as nn
+from sklearn.metrics import confusion_matrix
+from tqdm import tqdm 
 
+def Entropy(input_):
+    bs = input_.size(0)
+    epsilon = 1e-5
+    entropy = -input_ * torch.log(input_ + epsilon)
+    entropy = torch.sum(entropy, dim=1)
+    return entropy 
+
+def print_args(args):
+    s = "==========================================\n"
+    for arg, content in args.__dict__.items():
+        s += "{}:{}\n".format(arg, content)
+    return s
+
+def cal_acc(loader, netC, netF, out_file, flag=False, threshold=0.1, epsilon=1e-5, n_class = 8):
+    start_test = True
+    all_label, all_output = [], []
+    fts_img, fts_mesh, fts_pt, fts_vox = [], [], [], []
+
+    with torch.no_grad():
+        iter_test = iter(loader)
+        for _ in tqdm(range(len(loader))):
+            inputs_test = iter_test.next()
+            img, mesh, pt, vox, _, lbl, _ = inputs_test
+
+            img = img.cuda()
+            mesh = [d.cuda() for d in mesh]
+            pt = pt.cuda()
+            vox = vox.cuda()
+            lbl = lbl.cuda()
+            data = (img, mesh, pt, vox)
+
+            inputs = data
+            labels = lbl
+            # inputs = inputs.cuda()
+
+            out, feas = netC(netF(inputs), global_ft=True)
+
+            out_img, out_mesh, out_pt, out_vox = out
+            ft_img, ft_mesh, ft_pt, ft_vox = feas
+            out_obj = (out_img + out_mesh + out_pt + out_vox)/4
+
+            # _, preds = torch.max(out_obj, 1)
+            # all_preds.extend(preds.squeeze().detach().cpu().numpy().tolist())
+            all_label.extend(lbl.squeeze().detach().cpu().numpy().tolist())
+            all_output.extend(out_obj.squeeze().detach().cpu().numpy().tolist())
+
+            fts_img.append(ft_img.detach().cpu().numpy())
+            fts_mesh.append(ft_mesh.detach().cpu().numpy())
+            fts_pt.append(ft_pt.detach().cpu().numpy())
+            fts_vox.append(ft_vox.detach().cpu().numpy())
+            
+            # if start_test:
+            #     all_fea = feas.float().cpu()
+            #     all_output = outputs.float().cpu()
+            #     all_label = labels.float()
+            #     start_test = False
+            # else:
+            #     all_fea = torch.cat((all_fea, feas.float().cpu()), 0)
+            #     all_output = torch.cat((all_output, outputs.float().cpu()), 0)
+            #     all_label = torch.cat((all_label, labels.float()), 0)
+
+    fts_img = np.concatenate(fts_img, axis=0)
+    fts_mesh = np.concatenate(fts_mesh, axis=0)
+    fts_pt = np.concatenate(fts_pt, axis=0)
+    fts_vox = np.concatenate(fts_vox, axis=0)
+    all_fea = np.concatenate((fts_img, fts_mesh, fts_pt, fts_vox), axis=1)
+
+    dist_mat = scipy.spatial.distance.cdist(all_fea, all_fea, "cosine")
+    map_s = map_score(dist_mat, all_label, all_label)
+
+    all_label = torch.FloatTensor(all_label)
+    all_output = torch.FloatTensor(all_output)
+
+    all_output = nn.Softmax(dim=1)(all_output)
+    _, predict = torch.max(all_output, 1)
+
+    accuracy = torch.sum(torch.squeeze(predict).float() == all_label).item() / float(all_label.size()[0])
+    mean_ent = torch.mean(Entropy(nn.Softmax(dim=1)(all_output))).cpu().data.item()
+
+    if flag:
+        # all_output = nn.Softmax(dim=1)(all_output)
+        ent = torch.sum(-all_output * torch.log(all_output + epsilon), dim=1) / np.log(n_class)
+
+        from sklearn.cluster import KMeans
+        kmeans = KMeans(2, random_state=0).fit(ent.reshape(-1,1))
+        labels = kmeans.predict(ent.reshape(-1,1))
+
+        idx = np.where(labels==1)[0]
+        iidx = 0
+        if ent[idx].mean() > ent.mean():
+            iidx = 1
+        predict[np.where(labels==iidx)[0]] = n_class
+
+        matrix = confusion_matrix(all_label, torch.squeeze(predict).float())
+        # import pdb; pdb.set_trace()
+        for each in matrix:
+            out_file.write(str(each.tolist()) + '\n')
+            out_file.flush()
+
+        out_file.write('\n\n')
+        out_file.flush()
+
+        matrix = matrix[np.unique(all_label).astype(int),:]
+        acc = matrix.diagonal()/matrix.sum(axis=1) * 100
+        unknown_acc = acc[-1:].item()
+        # acc = 100
+        # unknown_acc = 100
+        return np.mean(acc[:-1]), np.mean(acc), unknown_acc, map_s
+        # return acc, acc, unknown_acc, map_s
+    else:
+        return accuracy*100, mean_ent
+
+def init_weights(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv2d') != -1 or classname.find('ConvTranspose2d') != -1:
+        nn.init.kaiming_uniform_(m.weight)
+        nn.init.zeros_(m.bias)
+    elif classname.find('BatchNorm') != -1:
+        nn.init.normal_(m.weight, 1.0, 0.02)
+        nn.init.zeros_(m.bias)
+    elif classname.find('Linear') != -1:
+        nn.init.xavier_normal_(m.weight)
+        nn.init.zeros_(m.bias)
+
+
+def clip_gradient(optimizer, grad_clip):
+    assert grad_clip>0, 'gradient clip value must be greater than 1'
+    for group in optimizer.param_groups:
+        for param in group['params']:
+            # gradient
+            param.grad.data.clamp_(-grad_clip, grad_clip)
+            
 class CrossEntropyLabelSmooth(nn.Module):
     """Cross entropy loss with label smoothing regularizer.
     Reference:
@@ -61,6 +195,8 @@ def res2tab(res: dict, n_palce=4):
     min_size = 8
     k_str, v_str = '', ''
     for k, v in res.items():
+        if (k == "epoch"):
+            break
         cur_len = max(min_size, len(k)+2)
         k_str += dy_str(f'{k}', cur_len) + '| '
         v_str += dy_str(f'{v:.4}', cur_len) + '| '

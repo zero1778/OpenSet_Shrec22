@@ -17,9 +17,13 @@ def load_pt(root, augement=False, resolution=1024):
         return None
     else:
         pt = np.loadtxt(str(filename))
+        # pt = pt.float()
         pt = pt - np.expand_dims(np.mean(pt, axis=0), 0)  # center
         dist = np.max(np.sqrt(np.sum(pt ** 2, axis=1)), 0)
-        pt = pt / dist  # scale
+        # print("dist = ",dist)
+        # print("pt = ",pt)
+        if (dist != 0):
+            pt = pt / dist  # scale
         if augement:
             pt = aug_pt(pt)
 

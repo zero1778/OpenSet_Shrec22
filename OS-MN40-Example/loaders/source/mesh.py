@@ -3,7 +3,7 @@ import os
 import torch
 import torch.utils.data as data
 import pymeshlab
-
+import pickle
 
 def aug_mesh(face, jitter_sigma=0.01, jitter_clip=0.05):
     # jitter
@@ -12,22 +12,33 @@ def aug_mesh(face, jitter_sigma=0.01, jitter_clip=0.05):
     return face
 
 
-def load_mesh(root, augement=False, name='mesh_500face', max_faces=500):
-    filename = root/f'{name}.obj'
-    face, neighbor_index = process_mesh(str(filename), max_faces)
-    # data augmentation
-    if augement:
-        face = aug_mesh(face)
-    # to tensor
-    face = torch.from_numpy(face).float()
-    neighbor_index = torch.from_numpy(neighbor_index).long()
-    # reorganize
-    face = face.permute(1, 0).contiguous()
-    centers, corners, normals = face[:3], face[3:12], face[12:]
-    corners = corners - torch.cat([centers, centers, centers], 0)
+def load_mesh(root, augement=False, name='mesh_500face', max_faces=500, typedata="full"):
+    if (typedata == 'full'):
+        filename = root/f'{name}.obj'
+        # print(filename)
+        face, neighbor_index = process_mesh(str(filename), max_faces)
+        # print(face, neighbor_index)
+        # import pdb; pdb.set_trace()
+        
+        # data augmentation
+        if augement:
+            face = aug_mesh(face)
+        # to tensor
+        face = torch.from_numpy(face).float()
+        neighbor_index = torch.from_numpy(neighbor_index).long()
+        # reorganize
+        face = face.permute(1, 0).contiguous()
+        centers, corners, normals = face[:3], face[3:12], face[12:]
+        corners = corners - torch.cat([centers, centers, centers], 0)
 
-    mesh = torch.cat((centers, corners, normals), dim=0)
-
+        mesh = torch.cat((centers, corners, normals), dim=0)
+        # print(mesh.shape)
+    else:
+        filename = root/f'{name}.pkl'
+        with open(filename, 'rb') as handle:
+            meshf = pickle.load(handle)
+        mesh, neighbor_index = np.float32(meshf["mesh"]), meshf["neighbor_index"].astype(int)
+        # print(mesh.shape)
     return (mesh, neighbor_index)
 
 
@@ -57,6 +68,7 @@ def process_mesh(path, max_faces):
     # get elements
     vertices = mesh.vertex_matrix()
     faces = mesh.face_matrix()
+    # import pdb; pdb.set_trace()
 
     if faces.shape[0] != max_faces:     # only occur once in train set of Manifold40
         print("Model with more than {} faces ({}): {}".format(max_faces, faces.shape[0], path))
@@ -108,6 +120,7 @@ def process_mesh(path, max_faces):
 
     # fill for n < max_faces with randomly picked faces
     num_point = len(faces)
+    # print("NUM_POINT = ",num_point)
     if num_point < max_faces:
         fill_face = []
         fill_neighbor_index = []
