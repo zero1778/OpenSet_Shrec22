@@ -304,7 +304,7 @@ def main():
     max_iter = max_epoch * len(train_loader)
     # interval_iter = max_iter // 10
     iter_num = 0
-    # out_file = open(os.path.join(save_dir, 'log_model.txt'), 'w')
+    out_file = open(os.path.join(save_dir, 'log_model.txt'), 'w')
     for epoch in range(max_epoch):
         # train
         iter_num = train(train_loader, netC, netF, criterion, optimizer, epoch, iter_num, max_iter)

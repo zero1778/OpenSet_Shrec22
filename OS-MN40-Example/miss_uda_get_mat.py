@@ -13,26 +13,26 @@ import scipy.spatial
 import torch.nn as nn
 from pathlib import Path
 from torch.utils.data import DataLoader
-from models.uda import UniModel_cls, UniModel_base
+from models.miss_uda import UniModel_cls, UniModel_base
 
-from loaders import OSMN40_retrive
+from loaders.source_miss import OSMN40_retrive
 os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 
 ######### must config this #########
 data_root = Path('../data/OS-MN40-Miss')
 typedata = "miss"
 
-ckpt_path = "./cache/miss_ckpts_source/OS-MN40_2022-02-26-09-20-43"
+ckpt_path = "./cache/miss_ckpts_source/OS-MN40_2022-03-04-05-45-23_resnet"
 ckptF_path = ckpt_path + '/ckpt_F.pth'
 ckptC_path = ckpt_path + '/ckpt_C.pth'
-save_path = './pickle/miss_source_nclass/'
+save_path = './pickle/miss_source_newdata_resnet/'
 ####################################
 
 # configure
-dist_mat_path = Path(ckpt_path)/ "cdist_cosine_nclass.txt"
+dist_mat_path = Path(ckpt_path)/ "cdist_cosine.txt"
 dist_metric= 'cosine'
 # dist_metric = 'euclidean'
-batch_size = 32
+batch_size = 16
 n_worker = 4
 n_class = 8
 
@@ -47,8 +47,6 @@ def extract(query_loader, target_loader, netF, netC):
     netC.eval()
     print("Extracting....")
 
-    q_fts_img, q_fts_mesh, q_fts_pt, q_fts_vox = [], [], [], []
-    t_fts_img, t_fts_mesh, t_fts_pt, t_fts_vox = [], [], [], []
 
     q_fts, t_fts = [], []
     st = time.time()
@@ -59,31 +57,24 @@ def extract(query_loader, target_loader, netF, netC):
             mesh = [d.cuda() for d in mesh]
             pt = pt.cuda()
             vox = vox.cuda()
-            data = (img, mesh, pt, vox)
+            num_obj = num_obj.cuda()
+            data = (img, mesh, pt, vox, num_obj)
 
-            num_obj = num_obj.sum().cuda()
-            # _, ft = netC(netF(data), global_ft=True)
+            _, ft = netC(netF(data), global_ft=True)
+            ft_img, ft_mesh, ft_pt, ft_vox = ft
 
-            out = netC(netF(data))
-            out_img, out_mesh, out_pt, out_vox = out
-            # import pdb; pdb.set_trace()
-            out_obj = (out_img + out_mesh + out_pt + out_vox)/num_obj
+            fts = ( num_obj[:,0].reshape(-1,1)   * ft_img  
+                    + num_obj[:,1].reshape(-1,1) * ft_mesh 
+                    + num_obj[:,2].reshape(-1,1) * ft_pt 
+                    + num_obj[:,3].reshape(-1,1) * ft_vox)/ num_obj.sum(axis=1).reshape(-1, 1)
 
-            # ft_img, ft_mesh, ft_pt, ft_vox = ft
-
-            q_fts.append(out_obj.detach().cpu().numpy())
-            # q_fts_img.append(ft_img.detach().cpu().numpy())
-            # q_fts_mesh.append(ft_mesh.detach().cpu().numpy())
-            # q_fts_pt.append(ft_pt.detach().cpu().numpy())
-            # q_fts_vox.append(ft_vox.detach().cpu().numpy())
+            q_fts.append(fts.detach().cpu().numpy())
+            # fts_mesh.append(ft_mesh.detach().cpu().numpy())
+            # fts_pt.append(ft_pt.detach().cpu().numpy())
+            # fts_vox.append(ft_vox.detach().cpu().numpy())
 
         q_fts_uni = np.concatenate(q_fts, axis=0)
-        # q_fts_img = np.concatenate(q_fts_img, axis=0)
-        # q_fts_mesh = np.concatenate(q_fts_mesh, axis=0)
-        # q_fts_pt = np.concatenate(q_fts_pt, axis=0)
-        # q_fts_vox = np.concatenate(q_fts_vox, axis=0)
-        # q_fts_uni = np.concatenate((q_fts_img, q_fts_mesh, q_fts_pt, q_fts_vox), axis=1)
-        # import pdb; pdb.set_trace()
+           
         with open(save_path + 'query.pickle', 'wb') as handle:
             pickle.dump(q_fts_uni, handle, protocol=pickle.HIGHEST_PROTOCOL)
     else:
@@ -91,25 +82,24 @@ def extract(query_loader, target_loader, netF, netC):
             q_fts_uni = pickle.load(handle)
 
     if (save_vec):
-        for img, mesh, pt, vox, _ in tqdm(target_loader):
+        for img, mesh, pt, vox, num_obj in tqdm(target_loader):
             img = img.cuda()
             mesh = [d.cuda() for d in mesh]
             pt = pt.cuda()
             vox = vox.cuda()
-            data = (img, mesh, pt, vox)
+            num_obj = num_obj.cuda()
+            data = (img, mesh, pt, vox, num_obj)
 
-            num_obj = num_obj.sum().cuda()
+            _, ft = netC(netF(data), global_ft=True)
+            ft_img, ft_mesh, ft_pt, ft_vox = ft
 
-            # _, ft = netC(netF(data), global_ft=True)
-
-            out = netC(netF(data))
-            out_img, out_mesh, out_pt, out_vox = out
-            # import pdb; pdb.set_trace()
-            out_obj = (out_img + out_mesh + out_pt + out_vox)/num_obj
-
+            fts = ( num_obj[:,0].reshape(-1,1)   * ft_img  
+                    + num_obj[:,1].reshape(-1,1) * ft_mesh 
+                    + num_obj[:,2].reshape(-1,1) * ft_pt 
+                    + num_obj[:,3].reshape(-1,1) * ft_vox)/ num_obj.sum(axis=1).reshape(-1, 1)
             # ft_img, ft_mesh, ft_pt, ft_vox = ft
 
-            t_fts.append(out_obj.detach().cpu().numpy())
+            t_fts.append(fts.detach().cpu().numpy())
             # q_fts_img.append(ft_img.detach().cpu().numpy())
             # q_fts_mesh.append(ft_mesh.detach().cpu().numpy())
             # q_fts_pt.append(ft_pt.detach().cpu().numpy())

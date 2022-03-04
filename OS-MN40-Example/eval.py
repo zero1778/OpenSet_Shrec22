@@ -17,7 +17,16 @@ dist_path = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/ckpts_so
 # dist_path = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/ckpts_source_b5/OS-MN40_2022-02-28-19-13-54/assemble15.txt"
 # dist_path = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/ckpts_source_b2/OS-MN40_2022-03-01-05-39-48/cdist_cosine_b2.txt"
 dist_path = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/ckpts_target_test/OS-MN40_2022-03-02-08-43-58/cdist_cosine_1.txt"
+# dist_path = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/miss_ckpts_source/OS-MN40_2022-03-03-16-19-08/cdist_cosine.txt"
+dist_path = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/miss_ckpts_source/OS-MN40_2022-03-03-20-00-01_1024/cdist_cosine.txt"
+dist_path = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/miss_ckpts_source/OS-MN40_2022-03-04-03-05-00_1024/cdist_cosine_2.txt"
+dist_path = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/miss_ckpts_source/OS-MN40_2022-03-04-03-05-00_1024/ensemble_miss_1.txt"
+dist_path = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/miss_ckpts_source/OS-MN40_2022-03-04-05-45-23_resnet/cdist_cosine.txt"
+dist_path = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/ckpts_source_b1/OS-MN40_2022-02-28-13-14-02/ensemble_14_.txt"
+# dist_path = "/home/nero/SHREC2022/openset/SHREC2022-OpenSet/cdist_cosine (1).txt"
 dist_mat = np.loadtxt(dist_path)
+# print(dist_mat.shape)
+# import pdb; pdb.set_trace()
 
 
 MAP_score = map_score(dist_mat, query, target)

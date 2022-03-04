@@ -28,7 +28,6 @@ def load_pt(root, augement=False, resolution=1024):
             pt = aug_pt(pt)
 
         pt = torch.from_numpy(pt.astype(np.float32))
-        # print(root, pt.transpose(0, 1).shape)
         return pt.transpose(0, 1)
 
 if __name__ == '__main__':

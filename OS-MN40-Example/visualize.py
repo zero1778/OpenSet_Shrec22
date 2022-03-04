@@ -42,8 +42,10 @@ dist_path2 = "./cache/ckpts_source_b1/OS-MN40_2022-02-28-13-14-02/assemble12.txt
 # dist_path2 = "./cache/ckpts_source_b1/OS-MN40_2022-02-28-13-14-02/cdist_cosine_b1_1.txt"
 dist_path1 = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/ckpts_source_b5/OS-MN40_2022-02-28-19-13-54/cdist_cosine_b5.txt"
 # dist_path1 = "./cache/ckpts_target/OS-MN40_2022-02-25-07-12-22/cdist_cosine.txt"
-
-
+dist_path2 = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/ckpts_source_b1/OS-MN40_2022-02-28-13-14-02/assemble13.txt"
+dist_path1 = "/home/pbdang/Contest/SHREC22/OpenSet/MeshNet/result/cdist_cosine.txt"
+# dist_path1 = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/miss_ckpts_source/OS-MN40_2022-03-03-20-00-01_1024/cdist_cosine.txt"
+# dist_path2 = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/miss_ckpts_source/OS-MN40_2022-03-04-03-05-00_1024/cdist_cosine_2.txt"
 #################
 n_views = 3 # number of views 
 init_top = 0 # retrieve topK from [init_top: init_top + topK]
@@ -68,12 +70,12 @@ def main():
     query_list = read_object_list(data_root + "query.txt", collec_root + "query/")
     target_list = read_object_list(data_root + "target.txt", collec_root + "target/")
     
-    alpha = 0.1
+    alpha = 0.03
     dist_mat1 = np.loadtxt(dist_path1)
     dist_mat2 = np.loadtxt(dist_path2)
 
     dist_mat = dist_mat1*alpha + dist_mat2*(1 - alpha)
-    np.savetxt("./cache/ckpts_source_b5/OS-MN40_2022-02-28-19-13-54/assemble15.txt", dist_mat)
+    np.savetxt("/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/ckpts_source_b1/OS-MN40_2022-02-28-13-14-02/ensemble_14_.txt", dist_mat)
 
     dist_mat = dist_mat[query_id]
     

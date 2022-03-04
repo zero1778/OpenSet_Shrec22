@@ -1,5 +1,3 @@
-from distutils.log import Log
-# import imp
 import os
 import time
 import json
@@ -15,27 +13,28 @@ import custom_loss as custom_loss
 from utils import clip_gradient
 from tqdm import tqdm
 
-from models.miss_uda import UniModel_cls, UniModel_base
-from loaders.source_miss import OSMN40_train
+from models.uda_att_1024 import UniModel_cls, UniModel_att, UniModel_base
+from loaders.source import OSMN40_train
 from utils import split_trainval, AverageMeter, res2tab, acc_score, map_score, op_copy
 os.environ["CUDA_VISIBLE_DEVICES"] = '0,1'
 
 ######### must config this #########
-data_root = '/home/pbdang/Contest/SHREC22/OpenSet/data/OS-MN40-Miss'
-typedata = "test"
+data_root = '/home/pbdang/Contest/SHREC22/OpenSet/data/OS-MN40'
+typedata = "full"
 ####################################
 
 # configure
 n_class = 8
-n_worker = 4
+n_worker = 2
 max_epoch = 150
-batch_size = 10
+batch_size = 6
 learning_rate = 0.01
-this_task = f"OS-MN40_{time.strftime('%Y-%m-%d-%H-%M-%S')}_resnet"
+this_task = f"OS-MN40_{time.strftime('%Y-%m-%d-%H-%M-%S')}_att"
+
 
 # log and checkpoint
 out_dir = Path('cache')
-save_dir = out_dir/'miss_ckpts_source'/this_task
+save_dir = out_dir/'ckpts_source_b1_att'/this_task
 save_dir.mkdir(parents=True, exist_ok=True)
 out_file = open(os.path.join(save_dir, 'log_model.txt'), 'w')
 
@@ -56,8 +55,7 @@ def setup_seed():
     print(f"random seed: {seed}")
 
 
-def train(data_loader, netC, netF, criterion, optimizer, epoch, iter_num ,max_iter):
-    
+def train(data_loader, netC, netB, netF, criterion, optimizer, epoch, iter_num ,max_iter):
     Log_str = f"Epoch {epoch}, Training..."
     out_file.write(Log_str + '\n')
     out_file.flush()
@@ -68,6 +66,7 @@ def train(data_loader, netC, netF, criterion, optimizer, epoch, iter_num ,max_it
     # netC, netF = model
  
     netF.train()
+    netB.train()
     netC.train()
     loss_meter = AverageMeter()
     tpl_losses = AverageMeter()
@@ -75,27 +74,22 @@ def train(data_loader, netC, netF, criterion, optimizer, epoch, iter_num ,max_it
     all_lbls, all_preds = [], []
 
     st = time.time()
-    for i, (img, mesh, pt, vox, num_obj, lbl) in enumerate(data_loader):
+    for i, (img, mesh, pt, vox, _, lbl) in enumerate(data_loader):
         iter_num += 1
         img = img.cuda()
         mesh = [d.cuda() for d in mesh]
         pt = pt.cuda()
         vox = vox.cuda()
         lbl = lbl.cuda()
-        num_obj = num_obj.cuda()
-        # import pdb; pdb.set_trace()
-        data = (img, mesh, pt, vox, num_obj)
+        data = (img, mesh, pt, vox)
 
         out = netC(netF(data))
         out_img, out_mesh, out_pt, out_vox = out
         # import pdb; pdb.set_trace()
-        out_obj = (num_obj[:,0].reshape(-1,1)   * out_img  
-                   + num_obj[:,1].reshape(-1,1) * out_mesh 
-                   + num_obj[:,2].reshape(-1,1) * out_pt 
-                   + num_obj[:,3].reshape(-1,1) * out_vox)/ num_obj.sum(axis=1).reshape(-1, 1)
+        out_obj = (out_img + out_mesh + out_pt + out_vox)/4
 
-        cls_loss = crt_cls(out_obj, lbl)
-        tpl_loss, _ = crt_tlc(out_obj, lbl)
+        cls_loss = crt_cls(out, lbl)
+        tpl_loss, _ = crt_tlc(out, lbl)
 
         loss = w1 * cls_loss + w2 * tpl_loss
 
@@ -120,7 +114,6 @@ def train(data_loader, netC, netF, criterion, optimizer, epoch, iter_num ,max_it
             tpl_losses.update(tpl_loss.item(), lbl.shape[0])
         except:
             tpl_losses.update(tpl_loss, lbl.shape[0])
-
         Log_str = f"\t[{i}/{len(data_loader)}], Loss {loss.item():.4f}"
         out_file.write(Log_str + '\n')
         out_file.flush()
@@ -129,7 +122,6 @@ def train(data_loader, netC, netF, criterion, optimizer, epoch, iter_num ,max_it
 
     acc_mi = acc_score(all_lbls, all_preds, average="micro")
     acc_ma = acc_score(all_lbls, all_preds, average="macro")
-
     Log_str = f"Epoch: {epoch}, Time: {time.time()-st:.4f}s, Loss: {loss_meter.avg:4f}, Tpl_Loss: {tpl_losses.avg:4f}"
     out_file.write(Log_str + '\n')
     out_file.flush()
@@ -152,6 +144,7 @@ def train(data_loader, netC, netF, criterion, optimizer, epoch, iter_num ,max_it
     out_file.write('This Epoch Done!' + '\n')
     out_file.flush()
 
+
     return iter_num
 
 
@@ -162,48 +155,36 @@ def validation(data_loader, netC, netF, epoch):
     netF.eval()
     netC.eval()
     all_lbls, all_preds = [], []
-    fts_all = [] 
+    fts = []
 
     st = time.time()
-    for img, mesh, pt, vox, num_obj, lbl in tqdm(data_loader):
+    for img, mesh, pt, vox, _, lbl in tqdm(data_loader):
         img = img.cuda()
         mesh = [d.cuda() for d in mesh]
         pt = pt.cuda()
         vox = vox.cuda()
         lbl = lbl.cuda()
-        num_obj = num_obj.cuda()
-        data = (img, mesh, pt, vox, num_obj)
+        data = (img, mesh, pt, vox)
 
         out, ft = netC(netF(data), global_ft=True)
         out_img, out_mesh, out_pt, out_vox = out
         ft_img, ft_mesh, ft_pt, ft_vox = ft
-
-
-        out_obj = (num_obj[:,0].reshape(-1,1)   * out_img  
-                   + num_obj[:,1].reshape(-1,1) * out_mesh 
-                   + num_obj[:,2].reshape(-1,1) * out_pt 
-                   + num_obj[:,3].reshape(-1,1) * out_vox)/ num_obj.sum(axis=1).reshape(-1, 1)
-
-        # import pdb; pdb.set_trace()
-        fts = (num_obj[:,0].reshape(-1,1)   * ft_img  
-                   + num_obj[:,1].reshape(-1,1) * ft_mesh 
-                   + num_obj[:,2].reshape(-1,1) * ft_pt 
-                   + num_obj[:,3].reshape(-1,1) * ft_vox)/ num_obj.sum(axis=1).reshape(-1, 1)
+        out_obj = (out_img + out_mesh + out_pt + out_vox)/4
 
         _, preds = torch.max(out_obj, 1)
         all_preds.extend(preds.squeeze().detach().cpu().numpy().tolist())
         all_lbls.extend(lbl.squeeze().detach().cpu().numpy().tolist())
-        fts_all.append(fts.detach().cpu().numpy())
-        # fts_mesh.append(ft_mesh.detach().cpu().numpy())
-        # fts_pt.append(ft_pt.detach().cpu().numpy())
-        # fts_vox.append(ft_vox.detach().cpu().numpy())
+        fts_img.append(ft_img.detach().cpu().numpy())
+        fts_mesh.append(ft_mesh.detach().cpu().numpy())
+        fts_pt.append(ft_pt.detach().cpu().numpy())
+        fts_vox.append(ft_vox.detach().cpu().numpy())
 
-    fts_all = np.concatenate(fts_all, axis=0)
-    # fts_mesh = np.concatenate(fts_mesh, axis=0)
-    # fts_pt = np.concatenate(fts_pt, axis=0)
-    # fts_vox = np.concatenate(fts_vox, axis=0)
-    # fts_uni = np.concatenate((fts_img, fts_mesh, fts_pt, fts_vox), axis=1)
-    dist_mat = scipy.spatial.distance.cdist(fts_all, fts_all, "cosine")
+    fts_img = np.concatenate(fts_img, axis=0)
+    fts_mesh = np.concatenate(fts_mesh, axis=0)
+    fts_pt = np.concatenate(fts_pt, axis=0)
+    fts_vox = np.concatenate(fts_vox, axis=0)
+    fts_uni = np.concatenate((fts_img, fts_mesh, fts_pt, fts_vox), axis=1)
+    dist_mat = scipy.spatial.distance.cdist(fts_uni, fts_uni, "cosine")
     map_s = map_score(dist_mat, all_lbls, all_lbls)
     acc_mi = acc_score(all_lbls, all_preds, average="micro")
     acc_ma = acc_score(all_lbls, all_preds, average="macro")
@@ -232,7 +213,6 @@ def validation(data_loader, netC, netF, epoch):
     out_file.flush()
     out_file.write('This Epoch Done!' + '\n')
     out_file.flush()
-
     return map_s, res
 
 
@@ -285,14 +265,16 @@ def main():
     # triplet center loss 
     crt_tlc = custom_loss.TripletCenterLoss(num_classes=n_class).cuda()
     crt_tlc = torch.nn.utils.weight_norm(crt_tlc, name='centers')
-    criterion = [crt_cls, crt_tlc, 1, 0.3]
+    criterion = [crt_cls, crt_tlc, 1, 0.2]
 
     ### OPTIMIZER
     param_group = []
     for k, v in netF.named_parameters():
         param_group += [{'params': v, 'lr': learning_rate*0.1}]
+  
     for k, v in netC.named_parameters():
-        param_group += [{'params': v, 'lr': learning_rate}]   
+        param_group += [{'params': v, 'lr': learning_rate}] 
+
     optim_cls = optim.AdamW(param_group)
     optim_cls = op_copy(optim_cls)
     optim_centers = optim.AdamW(crt_tlc.parameters(), lr=0.1)
@@ -304,16 +286,16 @@ def main():
     max_iter = max_epoch * len(train_loader)
     # interval_iter = max_iter // 10
     iter_num = 0
-    # out_file = open(os.path.join(save_dir, 'log_model.txt'), 'w')
+   
     for epoch in range(max_epoch):
         # train
-        iter_num = train(train_loader, netC, netF, criterion, optimizer, epoch, iter_num, max_iter)
+        iter_num = train(train_loader, netC, netB, netF, criterion, optimizer, epoch, iter_num, max_iter)
         
         # lr_scheduler.step()
         # validation
         if epoch != 0 and epoch % 1 == 0:
             with torch.no_grad():
-                val_state, res = validation(val_loader, netC, netF, epoch)
+                val_state, res = validation(val_loader, netC, netB, netF, epoch)
             # save checkpoint
             if val_state > best_state:
                 print("saving model...")
