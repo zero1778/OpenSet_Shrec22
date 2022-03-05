@@ -13,7 +13,7 @@ import custom_loss as custom_loss
 from utils import clip_gradient
 from tqdm import tqdm
 
-from models.uda_att_1024 import UniModel_cls, UniModel_att, UniModel_base
+from models.uda_att_1024_pre import UniModel_cls, UniModel_base
 from loaders.source import OSMN40_train
 from utils import split_trainval, AverageMeter, res2tab, acc_score, map_score, op_copy
 os.environ["CUDA_VISIBLE_DEVICES"] = '0,1'
@@ -29,7 +29,7 @@ n_worker = 2
 max_epoch = 150
 batch_size = 6
 learning_rate = 0.01
-this_task = f"OS-MN40_{time.strftime('%Y-%m-%d-%H-%M-%S')}_att"
+this_task = f"OS-MN40_{time.strftime('%Y-%m-%d-%H-%M-%S')}_att_pre"
 
 
 # log and checkpoint
@@ -55,7 +55,7 @@ def setup_seed():
     print(f"random seed: {seed}")
 
 
-def train(data_loader, netC, netB, netF, criterion, optimizer, epoch, iter_num ,max_iter):
+def train(data_loader, netC, netF, criterion, optimizer, epoch, iter_num ,max_iter):
     Log_str = f"Epoch {epoch}, Training..."
     out_file.write(Log_str + '\n')
     out_file.flush()
@@ -66,7 +66,7 @@ def train(data_loader, netC, netB, netF, criterion, optimizer, epoch, iter_num ,
     # netC, netF = model
  
     netF.train()
-    netB.train()
+
     netC.train()
     loss_meter = AverageMeter()
     tpl_losses = AverageMeter()
@@ -88,8 +88,8 @@ def train(data_loader, netC, netB, netF, criterion, optimizer, epoch, iter_num ,
         # import pdb; pdb.set_trace()
         out_obj = (out_img + out_mesh + out_pt + out_vox)/4
 
-        cls_loss = crt_cls(out, lbl)
-        tpl_loss, _ = crt_tlc(out, lbl)
+        cls_loss = crt_cls(out_obj, lbl)
+        tpl_loss, _ = crt_tlc(out_obj, lbl)
 
         loss = w1 * cls_loss + w2 * tpl_loss
 
@@ -155,7 +155,7 @@ def validation(data_loader, netC, netF, epoch):
     netF.eval()
     netC.eval()
     all_lbls, all_preds = [], []
-    fts = []
+    fts_img, fts_mesh, fts_pt, fts_vox = [], [], [], []
 
     st = time.time()
     for img, mesh, pt, vox, _, lbl in tqdm(data_loader):
@@ -289,13 +289,13 @@ def main():
    
     for epoch in range(max_epoch):
         # train
-        iter_num = train(train_loader, netC, netB, netF, criterion, optimizer, epoch, iter_num, max_iter)
+        iter_num = train(train_loader, netC, netF, criterion, optimizer, epoch, iter_num, max_iter)
         
         # lr_scheduler.step()
         # validation
         if epoch != 0 and epoch % 1 == 0:
             with torch.no_grad():
-                val_state, res = validation(val_loader, netC, netB, netF, epoch)
+                val_state, res = validation(val_loader, netC, netF, epoch)
             # save checkpoint
             if val_state > best_state:
                 print("saving model...")

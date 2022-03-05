@@ -97,10 +97,10 @@ class PointNetCls_feat(nn.Module):
 
     def forward(self, x, global_ft=False):
         g_ft, trans = self.feat(x)
-        # x = F.relu(self.bn1(self.fc1(g_ft)))
-        # x = F.relu(self.bn2(self.dropout(self.fc2(x))))
+        x = F.relu(self.bn1(self.fc1(g_ft)))
+        x = F.relu(self.bn2(self.dropout(self.fc2(x))))
         # x = self.fc3(x)
-        return g_ft
+        return (x, g_ft)
         
 
 class PointNetCls_cls(nn.Module):

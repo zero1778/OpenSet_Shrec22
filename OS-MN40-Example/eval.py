@@ -22,8 +22,10 @@ dist_path = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/miss_ckp
 dist_path = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/miss_ckpts_source/OS-MN40_2022-03-04-03-05-00_1024/cdist_cosine_2.txt"
 dist_path = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/miss_ckpts_source/OS-MN40_2022-03-04-03-05-00_1024/ensemble_miss_1.txt"
 dist_path = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/miss_ckpts_source/OS-MN40_2022-03-04-05-45-23_resnet/cdist_cosine.txt"
-dist_path = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/ckpts_source_b1/OS-MN40_2022-02-28-13-14-02/ensemble_14_.txt"
+dist_path = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/ckpts_source_b1/OS-MN40_2022-02-28-13-14-02/ensemble_15ero_.txt"
 # dist_path = "/home/nero/SHREC2022/openset/SHREC2022-OpenSet/cdist_cosine (1).txt"
+# dist_path = "/home/nero/SHREC2022/openset/SHREC2022-OpenSet/cache/ckpts_source_b2/OS-MN40_2022-03-04-02-06-55/cdist_cosine.txt"
+dist_path = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/ckpts_source_b1_att/OS-MN40_2022-03-04-10-27-54_att_pre/cdist_cosine_1.txt"
 dist_mat = np.loadtxt(dist_path)
 # print(dist_mat.shape)
 # import pdb; pdb.set_trace()

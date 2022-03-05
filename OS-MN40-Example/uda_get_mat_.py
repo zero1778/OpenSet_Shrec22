@@ -13,26 +13,27 @@ import scipy.spatial
 import torch.nn as nn
 from pathlib import Path
 from torch.utils.data import DataLoader
-from models.uda_att_1024_pre import UniModel_cls, UniModel_base
+from models.uda_att_1024 import UniModel_cls, UniModel_base, UniModel_att
 
 from loaders.source import OSMN40_retrive
-os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+os.environ["CUDA_VISIBLE_DEVICES"] = '0,1'
 
 ######### must config this #########
 data_root = Path('../data/OS-MN40')
 typedata = "full"
 
-ckpt_path = "./cache/ckpts_source_b1_att/OS-MN40_2022-03-04-10-27-54_att_pre"
+ckpt_path = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/ckpts_source_b1_att_both/OS-MN40_2022-03-05-10-37-07"
 ckptF_path = ckpt_path + '/ckpt_F.pth'
+ckptB_path = ckpt_path + '/ckpt_B.pth'
 ckptC_path = ckpt_path + '/ckpt_C.pth'
-save_path = './pickle/source_pre_att_1/'
+save_path = './pickle/source_att/'
 ####################################
 
 # configure
-dist_mat_path = Path(ckpt_path)/ "cdist_cosine_1.txt"
+dist_mat_path = Path(ckpt_path)/ "cdist_cosine.txt"
 dist_metric= 'cosine'
 # dist_metric = 'euclidean'
-batch_size = 8
+batch_size = 16
 n_worker = 4
 n_class = 8
 
@@ -42,13 +43,12 @@ if (os.path.isdir(save_path) == False):
     os.mkdir(save_path)  
 
 
-def extract(query_loader, target_loader, netF, netC):
+def extract(query_loader, target_loader, netF, netB, netC):
     netF.eval()
     netC.eval()
     print("Extracting....")
 
-    q_fts_img, q_fts_mesh, q_fts_pt, q_fts_vox = [], [], [], []
-    t_fts_img, t_fts_mesh, t_fts_pt, t_fts_vox = [], [], [], []
+    q_fts, t_fts = [], []
 
     st = time.time()
 
@@ -59,22 +59,15 @@ def extract(query_loader, target_loader, netF, netC):
             pt = pt.cuda()
             vox = vox.cuda()
             data = (img, mesh, pt, vox)
-            _, ft = netC(netF(data), global_ft=True)
-            ft_img, ft_mesh, ft_pt, ft_vox = ft
-            q_fts_img.append(ft_img.detach().cpu().numpy())
-            q_fts_mesh.append(ft_mesh.detach().cpu().numpy())
-            q_fts_pt.append(ft_pt.detach().cpu().numpy())
-            q_fts_vox.append(ft_vox.detach().cpu().numpy())
-        q_fts_img = np.concatenate(q_fts_img, axis=0)
-        q_fts_mesh = np.concatenate(q_fts_mesh, axis=0)
-        q_fts_pt = np.concatenate(q_fts_pt, axis=0)
-        q_fts_vox = np.concatenate(q_fts_vox, axis=0)
-        q_fts_uni = np.concatenate((q_fts_img, q_fts_mesh, q_fts_pt, q_fts_vox), axis=1)
+            _, ft = netC(netB(netF(data)), global_ft=True)
+            q_fts.append(ft.detach().cpu().numpy())
+
+        q_fts = np.concatenate(q_fts, axis=0)
         with open(save_path + 'query.pickle', 'wb') as handle:
-            pickle.dump(q_fts_uni, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(q_fts, handle, protocol=pickle.HIGHEST_PROTOCOL)
     else:
         with open(save_path + 'query.pickle', 'rb') as handle:
-            q_fts_uni = pickle.load(handle)
+            q_fts = pickle.load(handle)
 
     if (save_vec):
         for img, mesh, pt, vox, _ in tqdm(target_loader):
@@ -84,25 +77,18 @@ def extract(query_loader, target_loader, netF, netC):
             vox = vox.cuda()
             data = (img, mesh, pt, vox)
             _, ft = netC(netF(data), global_ft=True)
-            ft_img, ft_mesh, ft_pt, ft_vox = ft
-            t_fts_img.append(ft_img.detach().cpu().numpy())
-            t_fts_mesh.append(ft_mesh.detach().cpu().numpy())
-            t_fts_pt.append(ft_pt.detach().cpu().numpy())
-            t_fts_vox.append(ft_vox.detach().cpu().numpy())
-        t_fts_img = np.concatenate(t_fts_img, axis=0)
-        t_fts_mesh = np.concatenate(t_fts_mesh, axis=0)
-        t_fts_pt = np.concatenate(t_fts_pt, axis=0)
-        t_fts_vox = np.concatenate(t_fts_vox, axis=0)
-        t_fts_uni = np.concatenate((t_fts_img, t_fts_mesh, t_fts_pt, t_fts_vox), axis=1)
+            t_fts.append(ft.detach().cpu().numpy())
+
+        t_fts = np.concatenate(t_fts, axis=0)
         with open(save_path + 'target.pickle', 'wb') as handle:
-            pickle.dump(t_fts_uni, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(t_fts, handle, protocol=pickle.HIGHEST_PROTOCOL)
     else:
         with open(save_path + 'target.pickle', 'rb') as handle:
-            t_fts_uni = pickle.load(handle)
+            t_fts = pickle.load(handle)
 
     print(f"Time Cost: {time.time()-st:.4f}")
 
-    dist_mat = scipy.spatial.distance.cdist(q_fts_uni, t_fts_uni, dist_metric)
+    dist_mat = scipy.spatial.distance.cdist(q_fts, t_fts, dist_metric)
     np.savetxt(str(dist_mat_path), dist_mat)
 
 def read_object_list(filename, pre_path):
@@ -130,12 +116,18 @@ def main():
     print(f"Loading model from {ckpt_path}")
 
     netF = UniModel_base(n_class)
+    netB = UniModel_att()
     netC = UniModel_cls(n_class)
     # import pdb; pdb.set_trace()
     ckpt = torch.load(ckptF_path, map_location=torch.device('cpu'))
     netF.load_state_dict(ckpt['net'])
     netF = netF.cuda()
     netF = nn.DataParallel(netF)
+
+    ckpt = torch.load(ckptB_path, map_location=torch.device('cpu'))
+    netB.load_state_dict(ckpt['net'])
+    netB = netB.cuda()
+    netB = nn.DataParallel(netB)
 
     ckpt = torch.load(ckptC_path, map_location=torch.device('cpu'))
     netC.load_state_dict(ckpt['net'])
@@ -144,7 +136,7 @@ def main():
 
     # extracting
     with torch.no_grad():
-        extract(query_loader, target_loader, netF, netC)
+        extract(query_loader, target_loader, netF, netB, netC)
 
     print(f"cdis matrix can be find in path: {dist_mat_path.absolute()}")
 

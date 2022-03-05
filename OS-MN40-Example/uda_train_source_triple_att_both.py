@@ -16,7 +16,7 @@ from tqdm import tqdm
 from models.uda_att_1024 import UniModel_cls, UniModel_att, UniModel_base
 from loaders.source import OSMN40_train
 from utils import split_trainval, AverageMeter, res2tab, acc_score, map_score, op_copy
-os.environ["CUDA_VISIBLE_DEVICES"] = '0,1'
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1" 
 
 ######### must config this #########
 data_root = '/home/pbdang/Contest/SHREC22/OpenSet/data/OS-MN40'
@@ -27,14 +27,16 @@ typedata = "full"
 n_class = 8
 n_worker = 2
 max_epoch = 150
-batch_size = 4
+batch_size = 6
 learning_rate = 0.01
-this_task = f"OS-MN40_{time.strftime('%Y-%m-%d-%H-%M-%S')}_att"
+this_task = f"OS-MN40_{time.strftime('%Y-%m-%d-%H-%M-%S')}"
+device = torch.device("cuda"  if torch.cuda.is_available() else "cpu")
+print("DEVICES =", device)
 
 
 # log and checkpoint
 out_dir = Path('cache')
-save_dir = out_dir/'ckpts_source_b1_att'/this_task
+save_dir = out_dir/'ckpts_source_b1_att_both'/this_task
 save_dir.mkdir(parents=True, exist_ok=True)
 out_file = open(os.path.join(save_dir, 'log_model.txt'), 'w')
 
@@ -76,12 +78,14 @@ def train(data_loader, netC, netB, netF, criterion, optimizer, epoch, iter_num ,
     st = time.time()
     for i, (img, mesh, pt, vox, _, lbl) in enumerate(data_loader):
         iter_num += 1
-        img = img.cuda()
-        mesh = [d.cuda() for d in mesh]
-        pt = pt.cuda()
-        vox = vox.cuda()
-        lbl = lbl.cuda()
+
+        img = img.to(device)
+        mesh = [d.to(device) for d in mesh]
+        pt = pt.to(device)
+        vox = vox.to(device)
+        lbl = lbl.to(device)
         data = (img, mesh, pt, vox)
+
 
         out = netC(netB(netF(data)))
 
@@ -157,11 +161,11 @@ def validation(data_loader, netC, netB, netF, epoch):
 
     st = time.time()
     for img, mesh, pt, vox, _, lbl in tqdm(data_loader):
-        img = img.cuda()
-        mesh = [d.cuda() for d in mesh]
-        pt = pt.cuda()
-        vox = vox.cuda()
-        lbl = lbl.cuda()
+        img = img.to(device)
+        mesh = [d.to(device) for d in mesh]
+        pt = pt.to(device)
+        vox = vox.to(device)
+        lbl = lbl.to(device)
         data = (img, mesh, pt, vox)
 
         out, ft = netC(netB(netF(data)), global_ft=True)
@@ -241,19 +245,22 @@ def main():
     ### MODEL 
     print("Create new model")
     netF = UniModel_base(n_class)
-    ckpt = torch.load('./cache/ckpts_source_b1_att/OS-MN40_2022-03-04-10-27-54_att_pre/ckpt_F.pth')
-    netF.load_state_dict(ckpt['net'])
+    # ckpt = torch.load('./cache/ckpts_source_b1_att/OS-MN40_2022-03-04-10-27-54_att_pre/ckpt_F.pth')
+    # netF.load_state_dict(ckpt['net'])
     netF = netF.cuda()
     netF = nn.DataParallel(netF)
+    netF.to(device)
     # netF.eval()
 
     netB = UniModel_att()
     netB = netB.cuda()
     netB = nn.DataParallel(netB)
+    netB.to(device)
 
     netC = UniModel_cls(n_class)
     netC = netC.cuda()
     netC = nn.DataParallel(netC)
+    netC.to(device)
     
     # model = (netC, netF)
 

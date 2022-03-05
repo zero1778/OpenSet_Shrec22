@@ -51,9 +51,9 @@ class MeshNet_feat(nn.Module):
             fea = fea[:, :, torch.randperm(fea.size(2))[:int(fea.size(2) * (1 - self.mask_ratio))]]
         fea = torch.max(fea, dim=2)[0]
         fea = fea.reshape(fea.size(0), -1)
-        # fea = self.classifier[:-1](fea)
+        x = self.classifier[:-1](fea)
         # cls = self.classifier[-1:](fea)
-        return fea
+        return (fea, x)
         # if global_ft:
         #     return cls, fea / torch.norm(fea)
         # else:
@@ -63,22 +63,16 @@ class MeshNet_cls(nn.Module):
 
     def __init__(self, n_class, dropout=0.5):
         super(MeshNet_cls, self).__init__()
-        self.emb = nn.Sequential(
-            nn.Linear(1024, 512),
-            nn.ReLU(),
-            nn.Dropout(p=dropout),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Dropout(p=dropout)
-        )
+        
         self.classifier = nn.Sequential(
             weightNorm(nn.Linear(256, n_class), name="weight")
         )
         self.classifier.apply(init_weights)
 
-    def forward(self, fea, global_ft=False):
+    def forward(self, data, global_ft=False):
+        fea, x = data
         # ft = self.emb(fea)
-        cls = self.classifier(fea)
+        cls = self.classifier(x)
 
         if global_ft:
             return cls, fea / torch.norm(fea)

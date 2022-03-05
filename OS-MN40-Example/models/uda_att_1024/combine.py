@@ -39,31 +39,25 @@ class UniModel_base(nn.Module):
 class UniModel_att(nn.Module):
     def __init__(self):
         super().__init__()
-        self.att = nn.MultiheadAttention(1024, 2, dropout=0.5)
+        self.att = nn.MultiheadAttention(embed_dim=1024, num_heads=4)
         
     def forward(self, data):
         img, mesh, pt, vox  = data # B, D
 
         # 1, B, D
-        img = img.unsqueeze(1).transpose(1,0)
-        mesh = mesh.unsqueeze(1).transpose(1,0)
-        pt = pt.unsqueeze(1).transpose(1,0)
-        vox = vox.unsqueeze(1).transpose(1,0) 
-
-        # import pdb; pdb.set_trace()
-        # print("img = ",img.shape)
-        # print("mesh = ",mesh.shape)
-        # print("pt = ",pt.shape)
-        # print("vox = ",vox.shape)
+        img = img.unsqueeze(0)
+        mesh = mesh.unsqueeze(0)
+        pt = pt.unsqueeze(0)
+        vox = vox.unsqueeze(0)
                
         # 4, B, D
         inps = torch.vstack((img, mesh))
         inps = torch.vstack((inps, pt))
         inps = torch.vstack((inps, vox))
 
-        inps = inps.transpose(1,0) # B, 4, D
-        x, _ = self.att(inps, inps, inps) # # B, 4, D
-        x = x.mean(1) # B, D
+        x, _ = self.att(inps, inps, inps) # # 4, B, D
+        x = x.mean(0) # B, D
+        # import pdb; pdb.set_trace()
         return x
 
             

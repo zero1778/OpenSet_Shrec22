@@ -46,12 +46,14 @@ dist_path2 = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/ckpts_s
 dist_path1 = "/home/pbdang/Contest/SHREC22/OpenSet/MeshNet/result/cdist_cosine.txt"
 # dist_path1 = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/miss_ckpts_source/OS-MN40_2022-03-03-20-00-01_1024/cdist_cosine.txt"
 # dist_path2 = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/miss_ckpts_source/OS-MN40_2022-03-04-03-05-00_1024/cdist_cosine_2.txt"
+dist_path2 = "/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/miss_ckpts_source/OS-MN40_2022-03-04-03-05-00_1024/ensemble_miss_1.txt"
+dist_path1 = "/home/nero/SHREC2022/openset/SHREC2022-OpenSet/cache/ckpts_source_b2/OS-MN40_2022-03-04-02-06-55/cdist_cosine.txt"
 #################
 n_views = 3 # number of views 
 init_top = 0 # retrieve topK from [init_top: init_top + topK]
 topK = 10 # retrieve topK 
 # 1, 3, 800, 4
-query_id = 4
+query_id = 800
 #################
 
 
@@ -70,12 +72,12 @@ def main():
     query_list = read_object_list(data_root + "query.txt", collec_root + "query/")
     target_list = read_object_list(data_root + "target.txt", collec_root + "target/")
     
-    alpha = 0.03
+    alpha = 1
     dist_mat1 = np.loadtxt(dist_path1)
     dist_mat2 = np.loadtxt(dist_path2)
 
     dist_mat = dist_mat1*alpha + dist_mat2*(1 - alpha)
-    np.savetxt("/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/ckpts_source_b1/OS-MN40_2022-02-28-13-14-02/ensemble_14_.txt", dist_mat)
+    np.savetxt("/home/pbdang/Contest/SHREC22/OpenSet/OS-MN40-Example/cache/ckpts_source_b1/OS-MN40_2022-02-28-13-14-02/ensemble_15ero_.txt", dist_mat)
 
     dist_mat = dist_mat[query_id]
     

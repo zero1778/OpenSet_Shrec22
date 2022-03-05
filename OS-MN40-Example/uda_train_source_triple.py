@@ -26,7 +26,7 @@ typedata = "full"
 n_class = 8
 n_worker = 4
 max_epoch = 150
-batch_size = 4
+batch_size = 6
 learning_rate = 0.01
 this_task = f"OS-MN40_{time.strftime('%Y-%m-%d-%H-%M-%S')}"
 
